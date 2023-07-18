@@ -9,6 +9,7 @@ module simulation
    use ensight_class,     only: ensight
    use event_class,       only: event
    use monitor_class,     only: monitor
+   use hypre_str_class, only: hypre_str
    implicit none
    private
 
@@ -18,6 +19,8 @@ module simulation
    type(vfs),         public :: vf
    type(matm),        public :: matmod
    type(timetracker), public :: time
+   type(hypre_str), public :: ps
+   type(hypre_str), public :: vs
 
    !> Ensight postprocessing
    type(ensight) :: ens_out
@@ -86,7 +89,7 @@ contains
       ! Initialize our VOF solver and field
       create_and_initialize_vof: block
          use mms_geom, only: cube_refine_vol
-         use vfs_class, only: r2p,lvira,elvira,VFhi,VFlo
+         use vfs_class, only: r2p,elvira,lvira,VFhi,VFlo
          integer :: i,j,k,n,si,sj,sk
          real(WP), dimension(3,8) :: cube_vertex
          real(WP), dimension(3) :: v_cent,a_cent
@@ -146,8 +149,8 @@ contains
 
       ! Create a compressible two-phase flow solver
       create_and_initialize_flow_solver: block
-         use mast_class, only: clipped_neumann,dirichlet,bc_scope,bcond,mech_egy_mech_hhz
-         use ils_class,  only: pcg_bbox,gmres_smg
+         use mast_class, only: clipped_neumann,dirichlet,bc_scope,bcond,mech_egy_mech_hhz, neumann
+         use hypre_str_class,  only: pcg_pfmg
          use mathtools,  only: Pi
          use parallel,   only: amRoot
          integer :: i,j,k,n
@@ -180,13 +183,15 @@ contains
          ! Read in surface tension coefficient
          call param_read('Surface tension coefficient',fs%sigma)
          ! Configure pressure solver
-         call param_read('Pressure iteration',fs%psolv%maxit)
-         call param_read('Pressure tolerance',fs%psolv%rcvg)
+         ps = hypre_str(cfg=cfg,name='Pressure',method=pcg_pfmg,nst=7)
+         call param_read('Pressure iteration',ps%maxit)
+         call param_read('Pressure tolerance',ps%rcvg)
          ! Configure implicit momentum solver
-         call param_read('Implicit iteration',fs%implicit%maxit)
-         call param_read('Implicit tolerance',fs%implicit%rcvg)
+         vs = hypre_str(cfg=cfg,name='Velocity',method=pcg_pfmg,nst=7)
+         call param_read('Implicit iteration',vs%maxit)
+         call param_read('Implicit tolerance',vs%rcvg)
          ! Setup the solver
-         call fs%setup(pressure_ils=pcg_bbox,implicit_ils=gmres_smg)
+         call fs%setup(pressure_solver=ps,implicit_solver=vs)
 
          ! Liquid density
          call param_read('Liquid density',Lrho0)
