@@ -1,10 +1,11 @@
 # Parallelization
-Partition :	8 1 1
+Partition :	10 1 1
 
 # Mesh definition
 Lx :	12
 nx :	192
 Ly :	12
+Ls :     1.0
 ny :	192
 <!-- Lz :    12 -->
 <!-- nz :    96  -->
@@ -34,7 +35,7 @@ Gas gamma : 		      1.4
 # Time integration
 Max timestep size : 5e-2
 Max cfl number :    0.8
-Max time :     	    175
+Max time :     	    90
 # To look at breakup, use tmax = 2.9e-3
 Max steps :	    100000
 
