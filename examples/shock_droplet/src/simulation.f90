@@ -32,7 +32,7 @@ module simulation
    public :: simulation_init,simulation_run,simulation_final
 
    !> Problem definition
-   real(WP) :: ddrop, Ls, Ly, GP1, Grho1
+   real(WP) :: ddrop, Ls, Ly, GP1, Grho1,relshockvel,xshock,Lx
    real(WP), dimension(3) :: dctr
    integer :: relax_model
 
@@ -105,7 +105,7 @@ contains
       integer, intent(in) :: i,j,k
       logical :: isIn
       isIn = .false.
-      if (pg%ym(j) - pg%y(pg%jmin+1).le.Ls) isIn=.true.
+      if (pg%ym(j) - pg%y(pg%jmin).le.Ls) isIn=.true.
 
    end function btm_sponge
 
@@ -118,63 +118,64 @@ contains
       logical :: in_sponge_top, in_sponge_btm
       real(WP) :: swt_top, swt_btm, psponge, rhos, us, vg, ws
       !real(WP) :: GP1, Grho1
-      !if Need to include the condition for the shock having passed through that portion of the domain
-      do k = fs%cfg%kmin_,fs%cfg%kmax_
-         do j = fs%cfg%jmin_,fs%cfg%jmax_
-            do i=fs%cfg%imin_,fs%cfg%imax_
-               in_sponge_top=.false.
-               in_sponge_btm=.false.
-               if (top_sponge(fs%cfg,i,j,k)) then
-                  in_sponge_top = .true.
-                  swt_top = min(1.0_WP, max(0.0_WP, (fs%cfg%ym(j) - Ly/2.0_WP + Ls)/Ls))**2
-                  ! print*,"TopSpongeCalc: ",swt_top
-                  ! print*,"FuncEval for swt_top: ", (fs%cfg%ym(j) - Ly/2.0_WP + Ls)/Ls
-               end if
-               if (btm_sponge(fs%cfg,i,j,k)) then
-                  in_sponge_btm = .true.
-                  swt_btm = min(1.0_WP,max(0.0_WP,(-fs%cfg%ym(j) - Ly/2.0_WP + Ls)/Ls))**2
-               end if
+      if ((relshockvel*t).ge.(Lx-xshock)) then !Need to include the condition for the shock having passed through that portion of the domain
+         do k = fs%cfg%kmin_,fs%cfg%kmax_
+            do j = fs%cfg%jmin_,fs%cfg%jmax_
+               do i=fs%cfg%imin_,fs%cfg%imax_
+                  in_sponge_top=.false.
+                  in_sponge_btm=.false.
+                  if (top_sponge(fs%cfg,i,j,k)) then
+                     in_sponge_top = .true.
+                     swt_top = min(1.0_WP, max(0.0_WP, (fs%cfg%ym(j) - Ly/2.0_WP + Ls)/Ls))**2
+                     ! print*,"TopSpongeCalc: ",swt_top
+                     ! print*,"FuncEval for swt_top: ", (fs%cfg%ym(j) - Ly/2.0_WP + Ls)/Ls
+                  end if
+                  if (btm_sponge(fs%cfg,i,j,k)) then
+                     in_sponge_btm = .true.
+                     swt_btm = min(1.0_WP,max(0.0_WP,(-fs%cfg%ym(j) - Ly/2.0_WP + Ls)/Ls))**2
+                  end if
 
-               psponge = GP1
-               rhos = Grho1
+                  psponge = GP1
+                  rhos = Grho1
 
-               if (in_sponge_top) then
-                  
-                  us = 1.0_WP; vg = 0.0_WP; ws = 0.0_WP
-                  fs%Grho (i,j,k) = fs%Grho (i,j,k) - swt_top*(fs%Grho(i,j,k) - rhos)
-                  fs%Ui   (i,j,k) = fs%Ui   (i,j,k) - swt_top*(fs%Ui(i,j,k)-us)
-                  fs%Vi   (i,j,k) = fs%Vi   (i,j,k) - swt_top*(fs%Vi(i,j,k)-vg)
-                  fs%Wi   (i,j,k) = fs%Wi   (i,j,k) - swt_top*(fs%Wi(i,j,k)-ws)
-                  fs%GP   (i,j,k) = fs%GP   (i,j,k) - swt_top*(fs%GP(i,j,k)-psponge)
-                  fs%GrhoE(i,j,k) = fs%GrhoE(i,j,k) - swt_top*(fs%GrhoE(i,j,k)-matmod%EOS_energy(psponge,rhos,us,vg,ws,'gas'))   
+                  if (in_sponge_top) then
+                     
+                     us = 1.0_WP; vg = 0.0_WP; ws = 0.0_WP
+                     fs%Grho (i,j,k) = fs%Grho (i,j,k) - swt_top*(fs%Grho(i,j,k) - rhos)
+                     fs%Ui   (i,j,k) = fs%Ui   (i,j,k) - swt_top*(fs%Ui(i,j,k)-us)
+                     fs%Vi   (i,j,k) = fs%Vi   (i,j,k) - swt_top*(fs%Vi(i,j,k)-vg)
+                     fs%Wi   (i,j,k) = fs%Wi   (i,j,k) - swt_top*(fs%Wi(i,j,k)-ws)
+                     fs%GP   (i,j,k) = fs%GP   (i,j,k) - swt_top*(fs%GP(i,j,k)-psponge)
+                     fs%GrhoE(i,j,k) = fs%GrhoE(i,j,k) - swt_top*(fs%GrhoE(i,j,k)-matmod%EOS_energy(psponge,rhos,us,vg,ws,'gas'))   
 
-                  ! Update related quantities
-                  fs%RHO  (i,j,k) = fs%Grho(i,j,k)
-                  fs%rhoUi(i,j,k) = fs%RHO(i,j,k)*fs%Ui(i,j,k)
-                  fs%rhoVi(i,j,k) = fs%RHO(i,j,k)*fs%Vi(i,j,k)
-                  fs%rhoWi(i,j,k) = fs%RHO(i,j,k)*fs%Wi(i,j,k)
+                     ! Update related quantities
+                     fs%RHO  (i,j,k) = fs%Grho(i,j,k)
+                     fs%rhoUi(i,j,k) = fs%RHO(i,j,k)*fs%Ui(i,j,k)
+                     fs%rhoVi(i,j,k) = fs%RHO(i,j,k)*fs%Vi(i,j,k)
+                     fs%rhoWi(i,j,k) = fs%RHO(i,j,k)*fs%Wi(i,j,k)
 
-               end if
-               if (in_sponge_btm) then
+                  end if
+                  if (in_sponge_btm) then
 
-                  us = 1.0_WP;vg = 0.0_WP; ws = 0.0_WP
-                  fs%Grho (i,j,k) = fs%Grho (i,j,k) - swt_btm*(fs%Grho(i,j,k) - rhos)
-                  fs%Ui   (i,j,k) = fs%Ui   (i,j,k) - swt_btm*(fs%Ui(i,j,k)-us)
-                  fs%Vi   (i,j,k) = fs%Vi   (i,j,k) - swt_btm*(fs%Vi(i,j,k)-vg)
-                  fs%Wi   (i,j,k) = fs%Wi   (i,j,k) - swt_btm*(fs%Wi(i,j,k)-ws)
-                  fs%GP   (i,j,k) = fs%GP   (i,j,k) - swt_btm*(fs%GP(i,j,k)-psponge)
-                  fs%GrhoE(i,j,k) = fs%GrhoE(i,j,k) - swt_btm*(fs%GrhoE(i,j,k)-matmod%EOS_energy(psponge,rhos,us,vg,ws,'gas'))   
+                     us = 1.0_WP;vg = 0.0_WP; ws = 0.0_WP
+                     fs%Grho (i,j,k) = fs%Grho (i,j,k) - swt_btm*(fs%Grho(i,j,k) - rhos)
+                     fs%Ui   (i,j,k) = fs%Ui   (i,j,k) - swt_btm*(fs%Ui(i,j,k)-us)
+                     fs%Vi   (i,j,k) = fs%Vi   (i,j,k) - swt_btm*(fs%Vi(i,j,k)-vg)
+                     fs%Wi   (i,j,k) = fs%Wi   (i,j,k) - swt_btm*(fs%Wi(i,j,k)-ws)
+                     fs%GP   (i,j,k) = fs%GP   (i,j,k) - swt_btm*(fs%GP(i,j,k)-psponge)
+                     fs%GrhoE(i,j,k) = fs%GrhoE(i,j,k) - swt_btm*(fs%GrhoE(i,j,k)-matmod%EOS_energy(psponge,rhos,us,vg,ws,'gas'))   
 
-                  ! Update related quantities
-                  fs%RHO  (i,j,k) = fs%Grho(i,j,k)
-                  fs%rhoUi(i,j,k) = fs%RHO(i,j,k)*fs%Ui(i,j,k)
-                  fs%rhoVi(i,j,k) = fs%RHO(i,j,k)*fs%Vi(i,j,k)
-                  fs%rhoWi(i,j,k) = fs%RHO(i,j,k)*fs%Wi(i,j,k)
+                     ! Update related quantities
+                     fs%RHO  (i,j,k) = fs%Grho(i,j,k)
+                     fs%rhoUi(i,j,k) = fs%RHO(i,j,k)*fs%Ui(i,j,k)
+                     fs%rhoVi(i,j,k) = fs%RHO(i,j,k)*fs%Vi(i,j,k)
+                     fs%rhoWi(i,j,k) = fs%RHO(i,j,k)*fs%Wi(i,j,k)
 
-               end if
+                  end if
+               end do
             end do
          end do
-      end do
+      end if
 
       ! if(in_sponge_top .or. in_sponge_btm) then
       !    print*, "Sponge condition activated."
@@ -294,7 +295,7 @@ contains
          real(WP), dimension(3) :: xyz
          real(WP) :: r_rho,Reg,r_visc,Mag,Mal,Weg
          real(WP) :: gamm_l,Pref_l,gamm_g,visc_l,visc_g,Pref
-         real(WP) :: xshock,vshock,relshockvel
+         real(WP) :: vshock
          real(WP) :: Grho0, GP0, ST, Ma1, Ma, Lrho0, LP0, Mas
          type(bcond), pointer :: mybc
          ! Create material model class
@@ -307,6 +308,7 @@ contains
          call param_read('Dynamic viscosity ratio',r_visc); visc_l=visc_g*r_visc;
          call param_read('Gas Mach number',Mag); Pref = 1.0_WP/(gamm_g*Mag**2)
          call param_read('Liquid Mach number',Mal); Pref_l = r_rho/(gamm_l*Mal**2) - Pref
+         call param_read('Lx',Lx)
          call param_read('Ly',Ly)
          call param_read('Ls',Ls)
          ! Register equations of state
