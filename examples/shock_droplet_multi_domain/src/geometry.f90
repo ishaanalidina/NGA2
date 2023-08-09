@@ -8,6 +8,7 @@ module geometry
    !> Single config
    type(config), public :: cfg
 
+
    public :: geometry_init
 
 contains
@@ -20,11 +21,11 @@ contains
       use parallel,    only: amRoot
       use messager,    only: die
       implicit none
-      type(sgrid) :: grid
+      type(sgrid) :: grid1, grid2
 
 
-      ! Create a grid from input params
-      create_grid: block
+      ! Create a grid for from input params
+      create_grid1: block
          use sgrid_class, only: cartesian
          integer :: i,j,k,nx,ny,nz
          integer :: cpd,cpl,np,nyr,nxr
@@ -67,9 +68,8 @@ contains
              if (amRoot) then
                print*,"MESH ERROR: using uniform spacing in initial stretched x region meets or exceeds the boundary"
                print*,"- prescribed region length x1:",box_x1,"region length with uniform spacing:",rdx*cpl
-               call die("[geometry] geometric series is impossible (0). please alter inputs")
-              end if
-             !call die("[geometry] geometric series is impossible (0). please alter inputs")
+             end if
+             call die("[geometry] geometric series is impossible (0). please alter inputs")
            end if
            tol = 1e-10_WP ! tolerance for how close calculated Lx should be to real Lx
            ! initial values for loop to find r
@@ -99,9 +99,8 @@ contains
                print*,"MESH ERROR: insufficient number of points for x direction"
                print*,"= prescribed total points",nx
                print*,"= left stretched pts",cpl,"refined pts",nxr,"right stretched pts",nx-nxr-cpl
-               call die("[geometry] geometric series is impossible (1). please alter inputs")
-              end if
-             !call die("[geometry] geometric series is impossible (1). please alter inputs")
+             end if
+             call die("[geometry] geometric series is impossible (1). please alter inputs")
            end if
            do i=2,nxr+1
              x(cpl+i) = x(cpl+i-1)+rdx
@@ -115,9 +114,8 @@ contains
              if (amRoot) then
                print*,"MESH ERROR: using uniform spacing in final x stretched region meets or exceeds the boundary"
                print*,"= prescribed length Lx:",Lx,"length with uniform spacing:",box_x2+rdx*np
-               call die("[geometry] geometric series is impossible (2). please alter inputs")
-              end if
-             !call die("[geometry] geometric series is impossible (2). please alter inputs")
+             end if
+             call die("[geometry] geometric series is impossible (2). please alter inputs")
            end if
            ! Need to make these abort statements
            tol = 1e-10_WP ! tolerance for how close calculated Lx should be to real Lx
@@ -252,7 +250,7 @@ contains
          end do
 
          ! General serial grid object
-         grid=sgrid(coord=cartesian,no=3,x=x,y=y,z=z,xper=.false.,yper=.true.,zper=.true.,name='ShockDroplet')
+         grid=sgrid(coord=cartesian,no=3,x=x,y=y,z=z,xper=.false.,yper=.false.,zper=.true.,name='ShockDrop')
 
       end block create_grid
 

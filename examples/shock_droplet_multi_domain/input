@@ -5,11 +5,10 @@ Partition :	10 1 1
 Lx :	12
 nx :	192
 Ly :	12
-Ls :     1.0
 ny :	192
 <!-- Lz :    12 -->
 <!-- nz :    96  -->
-<!-- Cells per diameter :	  16 -->
+Cells per diameter :	  16
 Cells per left region:	  16
 Refined region left bdy:  4.17
 Refined region right bdy: 6
@@ -26,14 +25,11 @@ Density ratio : 1000
 Dynamic viscosity ratio : 10
 Gas Reynolds number : 1000
 Gas Weber number : 15
-Gas Mach number : 0.8
+Gas Mach number : 0.577
 Liquid Mach number : 0.01
+Shock Mach number : 1.47
 Liquid gamma :	      	      4.4
 Gas gamma : 		      1.4
-
-# Shock Mach number solver
-Shock Mach Solver tolerance : 1e-5
-Shock Mach Solver iteration : 1000
 
 # Time integration
 Max timestep size : 5e-2

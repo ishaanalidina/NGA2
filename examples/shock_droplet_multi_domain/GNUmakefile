@@ -1,0 +1,52 @@
+# NGA location if not yet defined
+NGA_HOME ?= /mnt/c/Users/ishaa/Desktop/IROP_Cornell_2023/Repositories/NGA2
+
+HYPRE_DIR = /mnt/c/Users/ishaa/Desktop/IROP_Cornell_2023/Builds/hypre
+IRL_DIR = /mnt/c/Users/ishaa/Desktop/IROP_Cornell_2023/Builds/irl
+LAPACK_DIR = \\wsl.localhost\Ubuntu-22.04\usr\lib\x86_64-linux-gnu\lapack
+FFTW_DIR = \\wsl.localhost\Ubuntu-22.04\mnt\wslg\distro\usr\include
+EIGEN_DIR = \\wsl.localhost\Ubuntu-22.04\usr\include\eigen3\Eigen
+
+# Compilation parameters
+PRECISION = DOUBLE
+USE_MPI   = TRUE
+USE_HYPRE = TRUE
+USE_LAPACK= TRUE
+USE_IRL   = TRUE
+PROFILE   = FALSE
+DEBUG     = FALSE
+COMP      = gnu
+EXEBASE   = nga
+
+# Directories that contain user-defined code
+Udirs   := src
+
+# Include user-defined sources
+Upack   += $(foreach dir, $(Udirs), $(wildcard $(dir)/Make.package))
+Ulocs   += $(foreach dir, $(Udirs), $(wildcard $(dir)))
+include $(Upack)
+INCLUDE_LOCATIONS += $(Ulocs)
+VPATH_LOCATIONS   += $(Ulocs)
+
+# External libraries are defined in .profile/.bashrc/.zshrc, but could be defined here as well
+
+# NGA compilation definitions
+include $(NGA_HOME)/tools/GNUMake/Make.defs
+
+# Include NGA base code
+Bdirs   := compressible core two_phase data solver config grid libraries
+Bpack   += $(foreach dir, $(Bdirs), $(NGA_HOME)/src/$(dir)/Make.package)
+include $(Bpack)
+
+# Inform user of Make.packages used
+ifdef Ulocs
+   $(info Taking user code from: $(Ulocs))
+endif
+$(info Taking base code from: $(Bdirs))
+
+# Target definition
+all: $(executable)
+	@echo COMPILATION SUCCESSFUL
+
+# NGA compilation rules
+include $(NGA_HOME)/tools/GNUMake/Make.rules

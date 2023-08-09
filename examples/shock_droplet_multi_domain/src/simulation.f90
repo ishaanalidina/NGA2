@@ -2,6 +2,7 @@
 module simulation
    use precision,         only: WP
    use geometry,          only: cfg
+   use coupler_class,     only: coupler
    use mast_class,        only: mast
    use vfs_class,         only: vfs
    use matm_class,        only: matm
@@ -15,24 +16,53 @@ module simulation
 
    !> Single two-phase flow solver, volume fraction solver, and material model set
    !> With corresponding time tracker
-   type(mast),        public :: fs
-   type(vfs),         public :: vf
-   type(matm),        public :: matmod
-   type(timetracker), public :: time
-   type(hypre_str),   public :: ps
-   type(hypre_str),   public :: vs
+   ! type(mast),        public :: fs
+   ! type(vfs),         public :: vf
+   ! type(matm),        public :: matmod
+   ! type(timetracker), public :: time
+   ! type(hypre_str),   public :: ps
+   ! type(hypre_str),   public :: vs
+
+   !Two-phase solver for the far-field from the droplet.
+   type(mast),        public :: fs1
+   type(vfs),         public :: vf1
+   type(matm),        public :: matmod1
+   type(timetracker), public :: time1
+   type(hypre_str),   public :: ps1
+   type(hypre_str),   public :: vs1
+
+   !Two-phase solver for the near-droplet field
+
+   type(mast),        public :: fs2
+   type(vfs),         public :: vf2
+   type(matm),        public :: matmod2
+   type(timetracker), public :: time2
+   type(hypre_str),   public :: ps2
+   type(hypre_str),   public :: vs2
+
+   !Introducing the coupler between the 2 solvers. Applying principles found in 2-grid nozzle to this problem.
+
+   type(coupler),     public :: cpl12x, cpl12y, cpl12z
+
 
    !> Ensight postprocessing
-   type(ensight) :: ens_out
-   type(event)   :: ens_evt
+   type(ensight) :: ens_out1
+   type(ensight) :: ens_out2
+   type(event)   :: ens_evt1
+   type(event)   :: ens_evt2
+
+   ! type(ensight) :: ens_out
+   ! type(event)   :: ens_evt
 
    !> Simulation monitor file
-   type(monitor) :: mfile,cflfile,cvgfile
+   type(monitor) :: mfile1,cflfile1,cvgfile1, mfile2, vflfile2, cvgfile2
+
+   ! type(monitor) :: mfile,cflfile,cvgfile
 
    public :: simulation_init,simulation_run,simulation_final
 
    !> Problem definition
-   real(WP) :: ddrop, Ls, Ly, GP1, Grho1,relshockvel,xshock,Lx
+   real(WP) :: ddrop
    real(WP), dimension(3) :: dctr
    integer :: relax_model
 
@@ -57,11 +87,10 @@ contains
      integer, intent(in) :: i,j,k
      logical :: isIn
      isIn=.false.
-     if (i.eq.pg%imax+1) isIn=.true.
+     if (i.eq.(dctr(1) - 1)) isIn=.true.
    end function right_of_domain
 
-   !Top and bottom of domain implemented similarly to previouslt created left and right cases.
-
+   ! Function that localises the bottom (-y) of the domain
    function btm_of_domain(pg,i,j,k) result(isIn)
       use pgrid_class, only: pgrid
       implicit none
@@ -72,6 +101,7 @@ contains
       if (j.eq.pg%jmin) isIn = .true.
    end function btm_of_domain
 
+   ! Function that localises the top (+y) of the domain
    function top_of_domain(pg,i,j,k) result(isIn)
       use pgrid_class, only: pgrid
       implicit none
@@ -82,106 +112,15 @@ contains
       if (j.eq.pg%jmax+1) isIn = .true.
    end function top_of_domain
 
+   ! Function that defines a level set for the region of finer mesh around the droplet
 
-   ! !Sponge boundary conditions on top and bottom of domain.
-
-   ! function top_sponge(pg,i,j,k) result(isIn)
-
-   ! !Taken from Chase Compressible Shear Layer case.
-   ! use pgrid_class, only: pgrid
-   ! implicit none
-   ! class(pgrid), intent(in) :: pg
-   ! integer, intent(in) :: i,j,k
-   ! logical :: isIn
-   ! isIn=.false.
-   ! if (pg%y(pg%jmax+1) - pg%ym(j).le.Ls) isIn=.true.
-
-   ! end function top_sponge
-
-   ! function btm_sponge(pg,i,j,k) result(isIn)
-   !    use pgrid_class, only: pgrid
+   ! function levelset_finermeshblock(xyz,t) result(isInFiner)
    !    implicit none
-   !    class(pgrid), intent(in) :: pg
-   !    integer, intent(in) :: i,j,k
-   !    logical :: isIn
-   !    isIn = .false.
-   !    if (pg%ym(j) - pg%y(pg%jmin).le.Ls) isIn=.true.
-
-   ! end function btm_sponge
-
-   ! subroutine apply_sponges(t)
-
-   !    use mathtools, only: Pi
-   !    implicit none
+   !    real(WP), dimension(3), intent(in) :: xyz
    !    real(WP), intent(in) :: t
-   !    integer :: i,j,k
-   !    logical :: in_sponge_top, in_sponge_btm
-   !    real(WP) :: swt_top, swt_btm, psponge, rhos, us, vg, ws
-   !    !real(WP) :: GP1, Grho1
-   !    if ((relshockvel*t).ge.(Lx-xshock)) then !Need to include the condition for the shock having passed through that portion of the domain
-   !       do k = fs%cfg%kmin_,fs%cfg%kmax_
-   !          do j = fs%cfg%jmin_,fs%cfg%jmax_
-   !             do i=fs%cfg%imin_,fs%cfg%imax_
-   !                in_sponge_top=.false.
-   !                in_sponge_btm=.false.
-   !                if (top_sponge(fs%cfg,i,j,k)) then
-   !                   in_sponge_top = .true.
-   !                   swt_top = min(1.0_WP, max(0.0_WP, (fs%cfg%ym(j) - Ly/2.0_WP + Ls)/Ls))**2
-   !                   ! print*,"TopSpongeCalc: ",swt_top
-   !                   ! print*,"FuncEval for swt_top: ", (fs%cfg%ym(j) - Ly/2.0_WP + Ls)/Ls
-   !                end if
-   !                if (btm_sponge(fs%cfg,i,j,k)) then
-   !                   in_sponge_btm = .true.
-   !                   swt_btm = min(1.0_WP,max(0.0_WP,(-fs%cfg%ym(j) - Ly/2.0_WP + Ls)/Ls))**2
-   !                end if
-
-   !                psponge = GP1
-   !                rhos = Grho1
-
-   !                if (in_sponge_top) then
-                     
-   !                   us = 1.0_WP; vg = 0.0_WP; ws = 0.0_WP
-   !                   fs%Grho (i,j,k) = fs%Grho (i,j,k) - swt_top*(fs%Grho(i,j,k) - rhos)
-   !                   fs%Ui   (i,j,k) = fs%Ui   (i,j,k) - swt_top*(fs%Ui(i,j,k)-us)
-   !                   fs%Vi   (i,j,k) = fs%Vi   (i,j,k) - swt_top*(fs%Vi(i,j,k)-vg)
-   !                   fs%Wi   (i,j,k) = fs%Wi   (i,j,k) - swt_top*(fs%Wi(i,j,k)-ws)
-   !                   fs%GP   (i,j,k) = fs%GP   (i,j,k) - swt_top*(fs%GP(i,j,k)-psponge)
-   !                   fs%GrhoE(i,j,k) = fs%GrhoE(i,j,k) - swt_top*(fs%GrhoE(i,j,k)-matmod%EOS_energy(psponge,rhos,us,vg,ws,'gas'))   
-
-   !                   ! Update related quantities
-   !                   fs%RHO  (i,j,k) = fs%Grho(i,j,k)
-   !                   fs%rhoUi(i,j,k) = fs%RHO(i,j,k)*fs%Ui(i,j,k)
-   !                   fs%rhoVi(i,j,k) = fs%RHO(i,j,k)*fs%Vi(i,j,k)
-   !                   fs%rhoWi(i,j,k) = fs%RHO(i,j,k)*fs%Wi(i,j,k)
-
-   !                end if
-   !                if (in_sponge_btm) then
-
-   !                   us = 1.0_WP;vg = 0.0_WP; ws = 0.0_WP
-   !                   fs%Grho (i,j,k) = fs%Grho (i,j,k) - swt_btm*(fs%Grho(i,j,k) - rhos)
-   !                   fs%Ui   (i,j,k) = fs%Ui   (i,j,k) - swt_btm*(fs%Ui(i,j,k)-us)
-   !                   fs%Vi   (i,j,k) = fs%Vi   (i,j,k) - swt_btm*(fs%Vi(i,j,k)-vg)
-   !                   fs%Wi   (i,j,k) = fs%Wi   (i,j,k) - swt_btm*(fs%Wi(i,j,k)-ws)
-   !                   fs%GP   (i,j,k) = fs%GP   (i,j,k) - swt_btm*(fs%GP(i,j,k)-psponge)
-   !                   fs%GrhoE(i,j,k) = fs%GrhoE(i,j,k) - swt_btm*(fs%GrhoE(i,j,k)-matmod%EOS_energy(psponge,rhos,us,vg,ws,'gas'))   
-
-   !                   ! Update related quantities
-   !                   fs%RHO  (i,j,k) = fs%Grho(i,j,k)
-   !                   fs%rhoUi(i,j,k) = fs%RHO(i,j,k)*fs%Ui(i,j,k)
-   !                   fs%rhoVi(i,j,k) = fs%RHO(i,j,k)*fs%Vi(i,j,k)
-   !                   fs%rhoWi(i,j,k) = fs%RHO(i,j,k)*fs%Wi(i,j,k)
-
-   !                end if
-   !             end do
-   !          end do
-   !       end do
-   !    end if
-
-   !    ! if(in_sponge_top .or. in_sponge_btm) then
-   !    !    print*, "Sponge condition activated."
-   !    ! end if
-   ! end subroutine
-
+   !    logical :: isInFiner
+   !    if 
+   ! end function levelset_finermeshblock
 
    !> Function that defines a level set function for a cylindrical droplet (2D)
    function levelset_cyl(xyz,t) result(G)
@@ -291,14 +230,12 @@ contains
          use hypre_str_class, only: pcg_pfmg
          use mathtools,  only: Pi
          use parallel,   only: amRoot
-         integer :: i,j,k,n,iter, MasSolverLim
+         integer :: i,j,k,n
          real(WP), dimension(3) :: xyz
          real(WP) :: r_rho,Reg,r_visc,Mag,Mal,Weg
          real(WP) :: gamm_l,Pref_l,gamm_g,visc_l,visc_g,Pref
-         real(WP) :: vshock
-         real(WP) :: Grho0, GP0, ST, Ma1, Ma, Lrho0, LP0, Mas
-         real(WP) :: Mas0,MasOld,f,f0,fOld,GP0_0,GP0_old,Grho0_0,Grho0_old,M2expected
-         real(WP) :: M2expected0,M2expectedOld,MasSolverTol, Us, UsOld, Us0, MasNew
+         real(WP) :: xshock,vshock,relshockvel
+         real(WP) :: Grho0, GP0, Grho1, GP1, ST, Ma1, Ma, Lrho0, LP0, Mas
          type(bcond), pointer :: mybc
          ! Create material model class
          matmod=matm(cfg=cfg,name='Liquid-gas models')
@@ -306,13 +243,10 @@ contains
          call param_read('Liquid gamma',gamm_l)
          call param_read('Gas gamma',gamm_g)
          call param_read('Density ratio',r_rho); Lrho0=r_rho
-         call param_read('Gas Reynolds number',Reg); visc_g=1.0_WP*ddrop/(Reg+epsilon(Reg))
+         call param_read('Gas Reynolds number',Reg); visc_g=1.0_WP/(Reg+epsilon(Reg))
          call param_read('Dynamic viscosity ratio',r_visc); visc_l=visc_g*r_visc;
          call param_read('Gas Mach number',Mag); Pref = 1.0_WP/(gamm_g*Mag**2)
          call param_read('Liquid Mach number',Mal); Pref_l = r_rho/(gamm_l*Mal**2) - Pref
-         call param_read('Lx',Lx)
-         call param_read('Ly',Ly)
-         call param_read('Ls',Ls)
          ! Register equations of state
          call matmod%register_stiffenedgas('liquid',gamm_l,Pref_l)
          call matmod%register_idealgas('gas',gamm_g)
@@ -323,7 +257,7 @@ contains
          call matmod%register_thermoflow_variables('gas'   ,fs%Grho,fs%Ui,fs%Vi,fs%Wi,fs%GrhoE,fs%GP)
          call matmod%register_diffusion_thermo_models(viscconst_gas=visc_g, viscconst_liquid=visc_l)
          ! Read in surface tension coefficient
-         call param_read('Gas Weber number',Weg); fs%sigma=1.0_WP*ddrop/(Weg+epsilon(Weg))
+         call param_read('Gas Weber number',Weg); fs%sigma=1.0_WP/(Weg+epsilon(Weg))
          ! Configure pressure solver
          ps=hypre_str(cfg=cfg,name='Pressure',method=pcg_pfmg,nst=7)
          ps%maxlevel=10
@@ -345,70 +279,19 @@ contains
 
          ! Initialize conditions
          call param_read('Shock location',xshock)
-
+         call param_read('Shock Mach number',Mas)
          ! Use shock relations to get pre-shock numbers
-         Grho1 = 1.0_WP; vshock = 1.0_WP; Ma = Mag; GP1 = Pref
-
-         !Initial calculations for the initialisation of the secant method used to define the shock Mach number.
-
-         !The initial values of shock Mach number chosen are the bounds of the validation experiments chosen, by Poplavski(2020) and Theofanous(2004).
-         Mas0 = 1.109_WP
-         MasOld = 3.0_WP
-         Grho0_0 = Grho1*((gamm_g-1.0_WP)*(Mas0**2) + 2.0_WP) / ((Mas0**2.0_WP) * (gamm_g+1.0_WP))
-         Grho0_old = Grho1*((gamm_g-1.0_WP)*(MasOld**2) + 2.0_WP) / ((MasOld**2.0_WP) * (gamm_g+1.0_WP))
-         GP0_0 = GP1*(gamm_g+1.0_WP) / (2.0_WP*gamm_g*Mas0**2.0_WP-(gamm_g-1.0_WP))
-         GP0_old = GP1*(gamm_g+1.0_WP) / (2.0_WP*gamm_g*MasOld**2.0_WP-(gamm_g-1.0_WP))
-         
-         !Calculating expected Mag from these values.
-         Us0 = Mas0*sqrt(gamm_g*GP0_0/Grho0_0)
-         UsOld = MasOld*sqrt(gamm_g*GP0_old/Grho0_old)
-         M2expected0 = Us0/sqrt(gamm_g*GP1/Grho1) - sqrt(((gamm_g - 1.0_WP)*Mas0**2.0_WP + 2.0_WP)/(2.0_WP*gamm_g*Mas0**2.0_WP - (gamm_g - 1.0_WP)))
-         M2expectedOld = UsOld/sqrt(gamm_g*GP1/Grho1) - sqrt(((gamm_g - 1.0_WP)*MasOld**2.0_WP + 2.0_WP)/(2.0_WP*gamm_g*MasOld**2.0_WP - (gamm_g - 1.0_WP)))
-
-         !Evaluating the difference relative to the chosen Mach number (this is the function for which the root is aimed)
-         f0 = M2expected0 - Mag
-         fOld = M2expectedOld - Mag
-
-         !Parameters for the Secant method root finding.
-         call param_read('Shock Mach Solver tolerance',MasSolverTol)
-         call param_read('Shock Mach Solver iteration',MasSolverLim)
-         iter = 1
-
-         Mas = (Mas0*fOld - MasOld*f0)/(fOld - f0)
-
-         do while((iter.lt.MasSolverLim))
-
-            Grho0 = Grho1*((gamm_g-1.0_WP)*(Mas**2) + 2.0_WP) / ((Mas**2.0_WP) * (gamm_g+1.0_WP))
-            GP0 = GP1*(gamm_g+1.0_WP) / (2.0_WP*gamm_g*Mas**2.0_WP-(gamm_g-1.0_WP))
-
-            Us = Mas*sqrt(gamm_g*GP0/Grho0)
-
-            M2expected = Us/sqrt(gamm_g*GP1/Grho1) - sqrt(((gamm_g - 1.0_WP)*Mas**2.0_WP + 2.0_WP)/(2.0_WP*gamm_g*Mas**2.0_WP - (gamm_g - 1.0_WP)))
-
-            f = M2expected - Mag
-
-            if (abs(f).le.MasSolverTol) then
-               exit
-            else
-               MasNew = (MasOld*f - Mas*fOld)/(f - fOld) 
-               MasOld = Mas
-               fOld = f
-               Mas = MasNew
-               iter = iter + 1
-            end if
-         end do
-
-         if (iter.eq.MasSolverLim) then
-            print*, 'Warning: The shock Mach number solver did not converge.'
-         end if
-
-         ! Final Calculations.
+         Grho1 = 1.0_WP; vshock = 1.0_WP; Ma = Mag;
+         ! Calculate Pressure post-shock
+         GP1 = vshock**2.0_WP * Grho1/(gamm_g*Ma**2.0_WP)
          ! Calculate density pre-shock
          Grho0 = Grho1*((gamm_g-1.0_WP)*(Mas**2) + 2.0_WP) / ((Mas**2.0_WP) * (gamm_g+1.0_WP))
          ! Calculate pressure pre-shock
          GP0 = GP1*(gamm_g+1.0_WP) / (2.0_WP*gamm_g*Mas**2.0_WP-(gamm_g-1.0_WP))
+         ! Calculate post-shock Mach number
+         Ma1 = sqrt(((gamm_g-1.0_WP)*(Ma**2)+2.0_WP)/(2.0_WP*gamm_g*(Ma**2.0_WP)-(gamm_g-1.0_WP)))
          ! Velocity at which shock moves
-         relshockvel = Mas*sqrt(gamm_g*GP0/Grho0)
+         relshockvel = -Grho1*vshock/(Grho0-Grho1)
 
          if (amRoot) then
            print*,"===== Problem Setup Description ====="
@@ -416,7 +299,6 @@ contains
            print*,'Pre-shock:  Density',Grho0,'Pressure',GP0
            print*,'Post-shock: Density',Grho1,'Pressure',GP1
            print*,'Shock velocity', relshockvel, 'Gas velocity',vshock
-           print*, 'Number of iterations to reach shock Mach number', iter
          end if
 
          ! Initialize gas phase quantities
@@ -453,8 +335,8 @@ contains
          ! Define boundary conditions - initialized values are intended dirichlet values too, for the cell centers
          call fs%add_bcond(name= 'inflow',type=dirichlet      ,locator=left_of_domain ,face='x',dir=-1)
          call fs%add_bcond(name='outflow',type=clipped_neumann,locator=right_of_domain,face='x',dir=+1)
-         ! call fs%add_bcond(name='outflow_bottom',type=clipped_neumann,locator=btm_of_domain,face='y',dir=-1)
-         ! call fs%add_bcond(name='outflow_top',type=clipped_neumann,locator=top_of_domain,face='y',dir=+1)
+         call fs%add_bcond(name='outflow_bottom',type=clipped_neumann,locator=btm_of_domain,face='y',dir=-1)
+         call fs%add_bcond(name='outflow_top',type=clipped_neumann,locator=top_of_domain,face='y',dir=+1)
 
          ! Calculate face velocities
          call fs%interp_vel_basic(vf,fs%Ui,fs%Vi,fs%Wi,fs%U,fs%V,fs%W)
@@ -602,10 +484,6 @@ contains
             
             ! Viscous step
             call fs%diffusion_src_explicit_step(time%dt,vf,matmod)
-
-            !Applying the sponge boundary condition
-
-            ! call apply_sponges(time%t)
 
             ! Prepare pressure projection
             call fs%pressureproj_prepare(time%dt,vf,matmod)
