@@ -32,7 +32,7 @@ module simulation
    public :: simulation_init,simulation_run,simulation_final
 
    !> Problem definition
-   real(WP) :: ddrop, Ls, Ly, GP1, Grho1,relshockvel,xshock,Lx
+   real(WP) :: ddrop, Ls, Ly, GP1, Grho1,relshockvel,xshock,Lx,nx
    real(WP), dimension(3) :: dctr
    integer :: relax_model
 
@@ -60,7 +60,7 @@ contains
      if (i.eq.pg%imax+1) isIn=.true.
    end function right_of_domain
 
-   !Top and bottom of domain implemented similarly to previouslt created left and right cases.
+   !Top and bottom of domain implemented similarly to previously created left and right cases.
 
    function btm_of_domain(pg,i,j,k) result(isIn)
       use pgrid_class, only: pgrid
@@ -83,104 +83,106 @@ contains
    end function top_of_domain
 
 
-   ! !Sponge boundary conditions on top and bottom of domain.
+   !Sponge boundary conditions on top and bottom of domain.
 
-   ! function top_sponge(pg,i,j,k) result(isIn)
+   function top_sponge(pg,i,j,k,t) result(isIn)
 
-   ! !Taken from Chase Compressible Shear Layer case.
-   ! use pgrid_class, only: pgrid
-   ! implicit none
-   ! class(pgrid), intent(in) :: pg
-   ! integer, intent(in) :: i,j,k
-   ! logical :: isIn
-   ! isIn=.false.
-   ! if (pg%y(pg%jmax+1) - pg%ym(j).le.Ls) isIn=.true.
+   !Taken from Chase Compressible Shear Layer case.
+   use pgrid_class, only: pgrid
+   implicit none
+   class(pgrid), intent(in) :: pg
+   integer, intent(in) :: i,j,k
+   logical :: isIn
+   real(WP), intent(in) :: t
+   isIn=.false.
+   if ((i*Lx/nx.lt.(xshock + relshockvel*t - 15.0_WP*(Lx/nx))).and.(pg%y(pg%jmax+1) - pg%ym(j).le.Ls)) isIn=.true.
 
-   ! end function top_sponge
+   end function top_sponge
 
-   ! function btm_sponge(pg,i,j,k) result(isIn)
-   !    use pgrid_class, only: pgrid
-   !    implicit none
-   !    class(pgrid), intent(in) :: pg
-   !    integer, intent(in) :: i,j,k
-   !    logical :: isIn
-   !    isIn = .false.
-   !    if (pg%ym(j) - pg%y(pg%jmin).le.Ls) isIn=.true.
+   function btm_sponge(pg,i,j,k,t) result(isIn)
+      use pgrid_class, only: pgrid
+      implicit none
+      class(pgrid), intent(in) :: pg
+      integer, intent(in) :: i,j,k
+      logical :: isIn
+      real(WP), intent(in) :: t
+      isIn = .false.
+      if ((i*Lx/nx.lt.(xshock + relshockvel*t - 15.0_WP*(Lx/nx))).and.(pg%ym(j) - pg%y(pg%jmin).le.Ls)) isIn=.true.
 
-   ! end function btm_sponge
+   end function btm_sponge
 
-   ! subroutine apply_sponges(t)
+   subroutine apply_sponges(t)
 
-   !    use mathtools, only: Pi
-   !    implicit none
-   !    real(WP), intent(in) :: t
-   !    integer :: i,j,k
-   !    logical :: in_sponge_top, in_sponge_btm
-   !    real(WP) :: swt_top, swt_btm, psponge, rhos, us, vg, ws
-   !    !real(WP) :: GP1, Grho1
-   !    if ((relshockvel*t).ge.(Lx-xshock)) then !Need to include the condition for the shock having passed through that portion of the domain
-   !       do k = fs%cfg%kmin_,fs%cfg%kmax_
-   !          do j = fs%cfg%jmin_,fs%cfg%jmax_
-   !             do i=fs%cfg%imin_,fs%cfg%imax_
-   !                in_sponge_top=.false.
-   !                in_sponge_btm=.false.
-   !                if (top_sponge(fs%cfg,i,j,k)) then
-   !                   in_sponge_top = .true.
-   !                   swt_top = min(1.0_WP, max(0.0_WP, (fs%cfg%ym(j) - Ly/2.0_WP + Ls)/Ls))**2
-   !                   ! print*,"TopSpongeCalc: ",swt_top
-   !                   ! print*,"FuncEval for swt_top: ", (fs%cfg%ym(j) - Ly/2.0_WP + Ls)/Ls
-   !                end if
-   !                if (btm_sponge(fs%cfg,i,j,k)) then
-   !                   in_sponge_btm = .true.
-   !                   swt_btm = min(1.0_WP,max(0.0_WP,(-fs%cfg%ym(j) - Ly/2.0_WP + Ls)/Ls))**2
-   !                end if
+      use mathtools, only: Pi
+      implicit none
+      real(WP), intent(in) :: t
+      integer :: i,j,k
+      logical :: in_sponge_top, in_sponge_btm
+      real(WP) :: swt_top, swt_btm, psponge, rhos, us, vg, ws
+      !real(WP) :: GP1, Grho1
+      !if ((relshockvel*t).ge.(Lx-xshock)) then !Need to include the condition for the shock having passed through that portion of the domain
+         do k = fs%cfg%kmin_,fs%cfg%kmax_
+            do j = fs%cfg%jmin_,fs%cfg%jmax_
+               do i=fs%cfg%imin_,fs%cfg%imax_
+                  in_sponge_top=.false.
+                  in_sponge_btm=.false.
+                  if (top_sponge(fs%cfg,i,j,k,t)) then
+                     in_sponge_top = .true.
+                     swt_top = min(1.0_WP, max(0.0_WP, (fs%cfg%ym(j) - Ly/2.0_WP + Ls)/Ls))**2
+                     ! print*,"TopSpongeCalc: ",swt_top
+                     ! print*,"FuncEval for swt_top: ", (fs%cfg%ym(j) - Ly/2.0_WP + Ls)/Ls
+                  end if
+                  if (btm_sponge(fs%cfg,i,j,k,t)) then
+                     in_sponge_btm = .true.
+                     swt_btm = min(1.0_WP,max(0.0_WP,(-fs%cfg%ym(j) - Ly/2.0_WP + Ls)/Ls))**2
+                  end if
 
-   !                psponge = GP1
-   !                rhos = Grho1
+                  psponge = GP1
+                  rhos = Grho1
 
-   !                if (in_sponge_top) then
+                  if (in_sponge_top) then
                      
-   !                   us = 1.0_WP; vg = 0.0_WP; ws = 0.0_WP
-   !                   fs%Grho (i,j,k) = fs%Grho (i,j,k) - swt_top*(fs%Grho(i,j,k) - rhos)
-   !                   fs%Ui   (i,j,k) = fs%Ui   (i,j,k) - swt_top*(fs%Ui(i,j,k)-us)
-   !                   fs%Vi   (i,j,k) = fs%Vi   (i,j,k) - swt_top*(fs%Vi(i,j,k)-vg)
-   !                   fs%Wi   (i,j,k) = fs%Wi   (i,j,k) - swt_top*(fs%Wi(i,j,k)-ws)
-   !                   fs%GP   (i,j,k) = fs%GP   (i,j,k) - swt_top*(fs%GP(i,j,k)-psponge)
-   !                   fs%GrhoE(i,j,k) = fs%GrhoE(i,j,k) - swt_top*(fs%GrhoE(i,j,k)-matmod%EOS_energy(psponge,rhos,us,vg,ws,'gas'))   
+                     us = 1.0_WP; vg = 0.0_WP; ws = 0.0_WP
+                     fs%Grho (i,j,k) = fs%Grho (i,j,k) - swt_top*(fs%Grho(i,j,k) - rhos)
+                     fs%Ui   (i,j,k) = fs%Ui   (i,j,k) - swt_top*(fs%Ui(i,j,k)-us)
+                     fs%Vi   (i,j,k) = fs%Vi   (i,j,k) - swt_top*(fs%Vi(i,j,k)-vg)
+                     fs%Wi   (i,j,k) = fs%Wi   (i,j,k) - swt_top*(fs%Wi(i,j,k)-ws)
+                     fs%GP   (i,j,k) = fs%GP   (i,j,k) - swt_top*(fs%GP(i,j,k)-psponge)
+                     fs%GrhoE(i,j,k) = fs%GrhoE(i,j,k) - swt_top*(fs%GrhoE(i,j,k)-matmod%EOS_energy(psponge,rhos,us,vg,ws,'gas'))   
 
-   !                   ! Update related quantities
-   !                   fs%RHO  (i,j,k) = fs%Grho(i,j,k)
-   !                   fs%rhoUi(i,j,k) = fs%RHO(i,j,k)*fs%Ui(i,j,k)
-   !                   fs%rhoVi(i,j,k) = fs%RHO(i,j,k)*fs%Vi(i,j,k)
-   !                   fs%rhoWi(i,j,k) = fs%RHO(i,j,k)*fs%Wi(i,j,k)
+                     ! Update related quantities
+                     fs%RHO  (i,j,k) = fs%Grho(i,j,k)
+                     fs%rhoUi(i,j,k) = fs%RHO(i,j,k)*fs%Ui(i,j,k)
+                     fs%rhoVi(i,j,k) = fs%RHO(i,j,k)*fs%Vi(i,j,k)
+                     fs%rhoWi(i,j,k) = fs%RHO(i,j,k)*fs%Wi(i,j,k)
 
-   !                end if
-   !                if (in_sponge_btm) then
+                  end if
+                  if (in_sponge_btm) then
 
-   !                   us = 1.0_WP;vg = 0.0_WP; ws = 0.0_WP
-   !                   fs%Grho (i,j,k) = fs%Grho (i,j,k) - swt_btm*(fs%Grho(i,j,k) - rhos)
-   !                   fs%Ui   (i,j,k) = fs%Ui   (i,j,k) - swt_btm*(fs%Ui(i,j,k)-us)
-   !                   fs%Vi   (i,j,k) = fs%Vi   (i,j,k) - swt_btm*(fs%Vi(i,j,k)-vg)
-   !                   fs%Wi   (i,j,k) = fs%Wi   (i,j,k) - swt_btm*(fs%Wi(i,j,k)-ws)
-   !                   fs%GP   (i,j,k) = fs%GP   (i,j,k) - swt_btm*(fs%GP(i,j,k)-psponge)
-   !                   fs%GrhoE(i,j,k) = fs%GrhoE(i,j,k) - swt_btm*(fs%GrhoE(i,j,k)-matmod%EOS_energy(psponge,rhos,us,vg,ws,'gas'))   
+                     us = 1.0_WP;vg = 0.0_WP; ws = 0.0_WP
+                     fs%Grho (i,j,k) = fs%Grho (i,j,k) - swt_btm*(fs%Grho(i,j,k) - rhos)
+                     fs%Ui   (i,j,k) = fs%Ui   (i,j,k) - swt_btm*(fs%Ui(i,j,k)-us)
+                     fs%Vi   (i,j,k) = fs%Vi   (i,j,k) - swt_btm*(fs%Vi(i,j,k)-vg)
+                     fs%Wi   (i,j,k) = fs%Wi   (i,j,k) - swt_btm*(fs%Wi(i,j,k)-ws)
+                     fs%GP   (i,j,k) = fs%GP   (i,j,k) - swt_btm*(fs%GP(i,j,k)-psponge)
+                     fs%GrhoE(i,j,k) = fs%GrhoE(i,j,k) - swt_btm*(fs%GrhoE(i,j,k)-matmod%EOS_energy(psponge,rhos,us,vg,ws,'gas'))   
 
-   !                   ! Update related quantities
-   !                   fs%RHO  (i,j,k) = fs%Grho(i,j,k)
-   !                   fs%rhoUi(i,j,k) = fs%RHO(i,j,k)*fs%Ui(i,j,k)
-   !                   fs%rhoVi(i,j,k) = fs%RHO(i,j,k)*fs%Vi(i,j,k)
-   !                   fs%rhoWi(i,j,k) = fs%RHO(i,j,k)*fs%Wi(i,j,k)
+                     ! Update related quantities
+                     fs%RHO  (i,j,k) = fs%Grho(i,j,k)
+                     fs%rhoUi(i,j,k) = fs%RHO(i,j,k)*fs%Ui(i,j,k)
+                     fs%rhoVi(i,j,k) = fs%RHO(i,j,k)*fs%Vi(i,j,k)
+                     fs%rhoWi(i,j,k) = fs%RHO(i,j,k)*fs%Wi(i,j,k)
 
-   !                end if
-   !             end do
-   !          end do
-   !       end do
-   !    end if
+                  end if
+               end do
+            end do
+         end do
+      !end if
 
-   !    ! if(in_sponge_top .or. in_sponge_btm) then
-   !    !    print*, "Sponge condition activated."
-   !    ! end if
-   ! end subroutine
+      ! if(in_sponge_top .or. in_sponge_btm) then
+      !    print*, "Sponge condition activated."
+      ! end if
+   end subroutine
 
 
    !> Function that defines a level set function for a cylindrical droplet (2D)
@@ -311,6 +313,7 @@ contains
          call param_read('Gas Mach number',Mag); Pref = 1.0_WP/(gamm_g*Mag**2)
          call param_read('Liquid Mach number',Mal); Pref_l = r_rho/(gamm_l*Mal**2) - Pref
          call param_read('Lx',Lx)
+         call param_read('nx',nx)
          call param_read('Ly',Ly)
          call param_read('Ls',Ls)
          ! Register equations of state
@@ -323,7 +326,7 @@ contains
          call matmod%register_thermoflow_variables('gas'   ,fs%Grho,fs%Ui,fs%Vi,fs%Wi,fs%GrhoE,fs%GP)
          call matmod%register_diffusion_thermo_models(viscconst_gas=visc_g, viscconst_liquid=visc_l)
          ! Read in surface tension coefficient
-         call param_read('Gas Weber number',Weg); fs%sigma=1.0_WP*ddrop/(Weg+epsilon(Weg))
+         call param_read('Gas Weber number',Weg); fs%sigma= 1.0_WP*ddrop/(Weg+epsilon(Weg))
          ! Configure pressure solver
          ps=hypre_str(cfg=cfg,name='Pressure',method=pcg_pfmg,nst=7)
          ps%maxlevel=10
@@ -453,8 +456,9 @@ contains
          ! Define boundary conditions - initialized values are intended dirichlet values too, for the cell centers
          call fs%add_bcond(name= 'inflow',type=dirichlet      ,locator=left_of_domain ,face='x',dir=-1)
          call fs%add_bcond(name='outflow',type=clipped_neumann,locator=right_of_domain,face='x',dir=+1)
-         ! call fs%add_bcond(name='outflow_bottom',type=clipped_neumann,locator=btm_of_domain,face='y',dir=-1)
+
          ! call fs%add_bcond(name='outflow_top',type=clipped_neumann,locator=top_of_domain,face='y',dir=+1)
+         ! call fs%add_bcond(name='outflow_btm',type=clipped_neumann,locator=btm_of_domain,face='y',dir=-1)
 
          ! Calculate face velocities
          call fs%interp_vel_basic(vf,fs%Ui,fs%Vi,fs%Wi,fs%U,fs%V,fs%W)
@@ -605,7 +609,7 @@ contains
 
             !Applying the sponge boundary condition
 
-            ! call apply_sponges(time%t)
+            call apply_sponges(time%t)
 
             ! Prepare pressure projection
             call fs%pressureproj_prepare(time%dt,vf,matmod)
